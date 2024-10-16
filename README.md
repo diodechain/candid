@@ -31,6 +31,10 @@ messages = [
 |> Candid.decode_parameters()
 ```
 
+## Completion
+
+This library is currently in the early stages of development and does not yet support all Candid formats (only those we need for our use cases at the moment). PRs and contributions to extend this library are welcome though!
+
 ## Documentation
 
 The documentation for this library can be found at [https://hexdocs.pm/candid](https://hexdocs.pm/candid).
