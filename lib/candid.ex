@@ -221,6 +221,12 @@ defmodule Candid do
     {binary, rest}
   end
 
+  defp decode_type_value(:text, rest, _definition_table) do
+    {len, rest} = LEB128.decode_unsigned!(rest)
+    <<binary::binary-size(len), rest::binary>> = rest
+    {binary, rest}
+  end
+
   defp decode_type_value({:vec, subtype}, rest, definition_table) do
     decode_list(rest, &decode_type_value(subtype, &1, definition_table))
   end
