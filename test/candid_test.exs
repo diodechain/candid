@@ -30,7 +30,14 @@ defmodule CandidTest do
   end
 
   test "encode_parameters" do
-    assert Candid.decode_parameters(Candid.encode_parameters([:text, :text], ["hello", "world"])) ==
-             {["hello", "world"], ""}
+    assert encode_parameters([:text, :text], ["hello", "world"]) == {["hello", "world"], ""}
+
+    assert encode_parameters([:principal, :text], ["br5f7-7uaaa-aaaaa-qaaca-cai", "hello"]) ==
+             {["br5f7-7uaaa-aaaaa-qaaca-cai", "hello"], ""}
+  end
+
+  defp encode_parameters(types, values) do
+    Candid.encode_parameters(types, values)
+    |> Candid.decode_parameters()
   end
 end

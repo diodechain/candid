@@ -227,6 +227,12 @@ defmodule Candid do
     {binary, rest}
   end
 
+  defp decode_type_value(:principal, <<1>> <> rest, _definition_table) do
+    {len, rest} = LEB128.decode_unsigned!(rest)
+    <<binary::binary-size(len), rest::binary>> = rest
+    {binary, rest}
+  end
+
   defp decode_type_value({:vec, subtype}, rest, definition_table) do
     decode_list(rest, &decode_type_value(subtype, &1, definition_table))
   end
@@ -285,7 +291,9 @@ defmodule Candid do
   defp encode_type_value(:text, text), do: LEB128.encode_unsigned(byte_size(text)) <> text
   defp encode_type_value(:reserved, _), do: ""
   # defp encode_type_value(:empty, _), do: ""
-  # defp encode_type_value(:principal, principal), do: principal
+  defp encode_type_value(:principal, principal),
+    do: <<1>> <> LEB128.encode_unsigned(byte_size(principal)) <> principal
+
   defp encode_type_value({:vec, :nat8}, binary) when is_binary(binary),
     do: LEB128.encode_unsigned(byte_size(binary)) <> binary
 
