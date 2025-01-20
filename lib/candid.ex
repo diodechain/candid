@@ -48,8 +48,7 @@ defmodule Candid do
 
     binvalues =
       Enum.zip(types, values)
-      |> Enum.map(fn {type, value} -> encode_type_value(type, value) end)
-      |> Enum.join("")
+      |> Enum.map_join("", fn {type, value} -> encode_type_value(type, value) end)
 
     result = "DIDL" <> definition_table <> argument_types <> binvalues
     {^values, ""} = decode_parameters(result)
@@ -252,7 +251,7 @@ defmodule Candid do
 
   defp encode_list(list, fun \\ fn x -> x end) when is_list(list) do
     len = length(list)
-    LEB128.encode_unsigned(len) <> Enum.join(Enum.map(list, fun), "")
+    LEB128.encode_unsigned(len) <> Enum.map_join(list, "", fun)
   end
 
   defp encode_type_list(types, definition_table, fun) when is_list(types) do
@@ -313,12 +312,11 @@ defmodule Candid do
       end
 
     List.zip([types, values])
-    |> Enum.map(fn {{_tag, type}, value} ->
+    |> Enum.map_join("", fn {{_tag, type}, value} ->
       # Seems in the real world responses, the tag is not encoded
       # LEB128.encode_unsigned(tag) <> encode_type_value(type, value)
       encode_type_value(type, value)
     end)
-    |> Enum.join("")
   end
 
   defp encode_type(:null, definition_table), do: {LEB128.encode_signed(-1), definition_table}
