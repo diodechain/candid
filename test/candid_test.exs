@@ -28,4 +28,9 @@ defmodule CandidTest do
       <<68, 73, 68, 76, 1, 108, 2, 0, 121, 1, 121, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0>>
       |> Candid.decode_parameters()
   end
+
+  test "encode_parameters" do
+    assert Candid.decode_parameters(Candid.encode_parameters([:text, :text], ["hello", "world"])) ==
+             {["hello", "world"], ""}
+  end
 end

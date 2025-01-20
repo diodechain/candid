@@ -282,7 +282,7 @@ defmodule Candid do
   defp encode_type_value(:int64, int64), do: <<int64::signed-little-size(64)>>
   defp encode_type_value(:float32, float32), do: <<float32::signed-little-size(32)>>
   defp encode_type_value(:float64, float64), do: <<float64::signed-little-size(64)>>
-  defp encode_type_value(:text, text), do: text
+  defp encode_type_value(:text, text), do: LEB128.encode_unsigned(byte_size(text)) <> text
   defp encode_type_value(:reserved, _), do: ""
   # defp encode_type_value(:empty, _), do: ""
   # defp encode_type_value(:principal, principal), do: principal
