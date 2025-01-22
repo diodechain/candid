@@ -51,15 +51,18 @@ defmodule Candid do
       |> Enum.map_join("", fn {type, value} -> encode_type_value(type, value) end)
 
     result = "DIDL" <> definition_table <> argument_types <> binvalues
-    {^values, ""} = decode_parameters(result)
+    {^values, ""} = decode_parameters(result, types)
     result
   end
 
-  def decode_parameters("DIDL" <> term) do
+  def decode_parameters("DIDL" <> term, passed_argument_types \\ nil) do
     {definition_table, rest} = decode_definition_list(term)
-    {argument_types, rest} = decode_list(rest, &decode_type(&1, definition_table))
-    decode_arguments(argument_types, rest, definition_table)
+    {parsed_argument_types, rest} = decode_list(rest, &decode_type(&1, definition_table))
+    decode_arguments(passed_argument_types || parsed_argument_types, rest, definition_table)
   end
+
+  def namehash(atom) when is_atom(atom), do: namehash(Atom.to_string(atom))
+  def namehash(integer) when is_integer(integer), do: integer
 
   def namehash(name) do
     # hash(id) = ( Sum_(i=0..k) utf8(id)[i] * 223^(k-i) ) mod 2^32 where k = |utf8(id)|-1
@@ -195,23 +198,29 @@ defmodule Candid do
   end
 
   defp decode_type_value({:record, types}, rest, definition_table) do
-    Enum.reduce(types, {[], rest}, fn {name, type}, {acc, rest} ->
-      # According to spec: https://github.com/dfinity/candid/blob/master/spec/Candid.md#core-grammar
-      # M(kv*  : record {<fieldtype>*}) = M(kv : <fieldtype>)*
-      # M : (<nat>, <val>) -> <fieldtype> -> i8*
-      # M((k,v) : k:<datatype>) = M(v : <datatype>)
-      # But it seems there is no field name in the real world responses
+    {result, rest} =
+      make_tagged_list(types)
+      |> Enum.reduce({[], rest}, fn {name, type}, {acc, rest} ->
+        # According to spec: https://github.com/dfinity/candid/blob/master/spec/Candid.md#core-grammar
+        # M(kv*  : record {<fieldtype>*}) = M(kv : <fieldtype>)*
+        # M : (<nat>, <val>) -> <fieldtype> -> i8*
+        # M((k,v) : k:<datatype>) = M(v : <datatype>)
+        # But it seems there is no field name in the real world responses
 
-      # {^name, rest} = LEB128.decode_unsigned!(rest)
-      {value, rest} = decode_type_value(type, rest, definition_table)
-
-      if name < 256 do
-        {[value | acc], rest}
-      else
+        # {^name, rest} = LEB128.decode_unsigned!(rest)
+        {value, rest} = decode_type_value(type, rest, definition_table)
         {[{name, value} | acc], rest}
-      end
-    end)
-    |> then(fn {values, rest} -> {List.to_tuple(Enum.reverse(values)), rest} end)
+      end)
+
+    if Enum.all?(result, fn {name, _} -> is_integer(name) and name < 256 end) do
+      {List.to_tuple(Enum.map(Enum.reverse(result), &elem(&1, 1))), rest}
+    else
+      {Map.new(result), rest}
+    end
+  end
+
+  defp decode_type_value(:blob, rest, definition_table) do
+    decode_type_value({:vec, :nat8}, rest, definition_table)
   end
 
   defp decode_type_value({:vec, :nat8}, rest, _definition_table) do
@@ -304,19 +313,31 @@ defmodule Candid do
   defp encode_type_value({:opt, type}, value), do: <<1>> <> encode_type_value(type, value)
 
   defp encode_type_value({:record, types}, values) do
-    values =
-      if is_tuple(values) do
-        Tuple.to_list(values)
-      else
-        values
-      end
+    types = make_tagged_list(types)
+    values = make_tagged_map(values)
 
-    List.zip([types, values])
-    |> Enum.map_join("", fn {{_tag, type}, value} ->
+    Enum.map_join(types, "", fn {tag, type} ->
       # Seems in the real world responses, the tag is not encoded
       # LEB128.encode_unsigned(tag) <> encode_type_value(type, value)
-      encode_type_value(type, value)
+      encode_type_value(type, values[tag])
     end)
+  end
+
+  defp make_tagged_list(tuple) when is_tuple(tuple) do
+    Tuple.to_list(tuple)
+    |> make_tagged_list()
+  end
+
+  defp make_tagged_list(enum) do
+    Enum.with_index(enum)
+    |> Enum.map(fn
+      {{tagname, value}, _index} -> {tagname, value}
+      {value, index} -> {index, value}
+    end)
+  end
+
+  defp make_tagged_map(enum) do
+    Map.new(make_tagged_list(enum))
   end
 
   defp encode_type(:null, definition_table), do: {LEB128.encode_signed(-1), definition_table}
@@ -359,7 +380,7 @@ defmodule Candid do
 
   defp encode_type({:record, subtypes}, definition_table) do
     {encoding, definition_table} =
-      encode_type_list(subtypes, definition_table, &encode_fieldtype/2)
+      encode_type_list(make_tagged_list(subtypes), definition_table, &encode_fieldtype/2)
 
     encoding = LEB128.encode_signed(-20) <> encoding
     maybe_add_complex_type(encoding, definition_table)
@@ -374,7 +395,7 @@ defmodule Candid do
 
   defp encode_fieldtype({tag, type}, definition_table) do
     {encoding, definition_table} = encode_type(type, definition_table)
-    {LEB128.encode_unsigned(tag) <> encoding, definition_table}
+    {LEB128.encode_unsigned(namehash(tag)) <> encoding, definition_table}
   end
 
   defp decode_type(term, definition_table) when is_binary(term) do

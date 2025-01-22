@@ -34,10 +34,16 @@ defmodule CandidTest do
 
     assert encode_parameters([:principal, :text], ["br5f7-7uaaa-aaaaa-qaaca-cai", "hello"]) ==
              {["br5f7-7uaaa-aaaaa-qaaca-cai", "hello"], ""}
+
+    assert encode_parameters([{:record, [:nat, :blob]}], [{1, "hello"}]) ==
+             {[{1, "hello"}], ""}
+
+    assert encode_parameters([{:record, %{id: :nat, name: :blob}}], [%{id: 1, name: "hello"}]) ==
+             {[%{id: 1, name: "hello"}], ""}
   end
 
   defp encode_parameters(types, values) do
     Candid.encode_parameters(types, values)
-    |> Candid.decode_parameters()
+    |> Candid.decode_parameters(types)
   end
 end
