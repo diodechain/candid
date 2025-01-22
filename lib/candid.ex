@@ -29,12 +29,12 @@ defmodule Candid do
   ```
   """
   def encode_parameters(types, values) do
-    if length(types) != length(values) do
+    if size(types) != size(values) do
       raise "types and values must have the same length"
     end
 
     {typemap, definitions} =
-      Enum.reduce(types, {%{}, []}, fn type, {typemap, definition_table} ->
+      Enum.reduce(values(types), {%{}, []}, fn type, {typemap, definition_table} ->
         if Map.has_key?(typemap, type) do
           {typemap, definition_table}
         else
@@ -44,12 +44,8 @@ defmodule Candid do
       end)
 
     definition_table = encode_list(definitions)
-    argument_types = encode_list(types, fn type -> typemap[type] end)
-
-    binvalues =
-      Enum.zip(types, values)
-      |> Enum.map_join("", fn {type, value} -> encode_type_value(type, value) end)
-
+    argument_types = encode_list(values(types), fn type -> typemap[type] end)
+    binvalues = encode_type_value({:record, types}, values)
     result = "DIDL" <> definition_table <> argument_types <> binvalues
     {^values, ""} = decode_parameters(result, types)
     result
@@ -58,7 +54,15 @@ defmodule Candid do
   def decode_parameters("DIDL" <> term, passed_argument_types \\ nil) do
     {definition_table, rest} = decode_definition_list(term)
     {parsed_argument_types, rest} = decode_list(rest, &decode_type(&1, definition_table))
-    decode_arguments(passed_argument_types || parsed_argument_types, rest, definition_table)
+    argument_types = passed_argument_types || parsed_argument_types
+
+    case decode_type_value({:record, argument_types}, rest, definition_table) do
+      {result, rest} when is_tuple(result) ->
+        {Tuple.to_list(result), rest}
+
+      {result, rest} ->
+        {result, rest}
+    end
   end
 
   def namehash(atom) when is_atom(atom), do: namehash(Atom.to_string(atom))
@@ -100,16 +104,6 @@ defmodule Candid do
   defp decode_list_items(n, rest, fun, acc) do
     {item, rest} = fun.(rest)
     decode_list_items(n - 1, rest, fun, acc ++ [item])
-  end
-
-  defp decode_arguments([type | types], rest, definition_table) do
-    {value, rest} = decode_type_value(type, rest, definition_table)
-    {values, rest} = decode_arguments(types, rest, definition_table)
-    {[value | values], rest}
-  end
-
-  defp decode_arguments([], rest, _definition_table) do
-    {[], rest}
   end
 
   defp decode_type_value(
@@ -199,6 +193,7 @@ defmodule Candid do
   defp decode_type_value({:record, types}, rest, definition_table) do
     {result, rest} =
       make_tagged_list(types)
+      |> Enum.sort_by(fn {name, _} -> namehash(name) end)
       |> Enum.reduce({[], rest}, fn {name, type}, {acc, rest} ->
         # According to spec: https://github.com/dfinity/candid/blob/master/spec/Candid.md#core-grammar
         # M(kv*  : record {<fieldtype>*}) = M(kv : <fieldtype>)*
@@ -315,7 +310,8 @@ defmodule Candid do
     types = make_tagged_list(types)
     values = make_tagged_map(values)
 
-    Enum.map_join(types, "", fn {tag, type} ->
+    Enum.sort_by(types, fn {tag, _} -> namehash(tag) end)
+    |> Enum.map_join("", fn {tag, type} ->
       # Seems in the real world responses, the tag is not encoded
       # LEB128.encode_unsigned(tag) <> encode_type_value(type, value)
       encode_type_value(type, values[tag] || raise("Missing value for tag: #{inspect(tag)}"))
@@ -327,12 +323,15 @@ defmodule Candid do
     |> make_tagged_list()
   end
 
-  defp make_tagged_list(enum) do
-    Enum.with_index(enum)
+  defp make_tagged_list(list) when is_list(list) do
+    Enum.with_index(list)
     |> Enum.map(fn
-      {{tagname, value}, _index} -> {tagname, value}
       {value, index} -> {index, value}
     end)
+  end
+
+  defp make_tagged_list(map) when is_map(map) do
+    Map.to_list(map)
   end
 
   defp make_tagged_map(enum) do
@@ -379,7 +378,9 @@ defmodule Candid do
 
   defp encode_type({:record, subtypes}, definition_table) do
     {encoding, definition_table} =
-      encode_type_list(make_tagged_list(subtypes), definition_table, &encode_fieldtype/2)
+      make_tagged_list(subtypes)
+      |> Enum.sort_by(fn {tag, _} -> namehash(tag) end)
+      |> encode_type_list(definition_table, &encode_fieldtype/2)
 
     encoding = LEB128.encode_signed(-20) <> encoding
     maybe_add_complex_type(encoding, definition_table)
@@ -426,12 +427,12 @@ defmodule Candid do
 
   defp decode_type({-20, rest}, definition_table) do
     {subtypes, rest} = decode_list(rest, &decode_fieldtype(&1, definition_table))
-    {{:record, subtypes}, rest}
+    {{:record, Map.new(subtypes)}, rest}
   end
 
   defp decode_type({-21, rest}, definition_table) do
     {subtypes, rest} = decode_list(rest, &decode_fieldtype(&1, definition_table))
-    {{:variant, subtypes}, rest}
+    {{:variant, Map.new(subtypes)}, rest}
   end
 
   defp decode_type({-24, rest}, _definition_table), do: {:principal, rest}
@@ -445,5 +446,14 @@ defmodule Candid do
     {n, rest} = LEB128.decode_unsigned!(rest)
     {type, rest} = decode_type(rest, definition_table)
     {{n, type}, rest}
+  end
+
+  defp size(list) when is_list(list), do: length(list)
+  defp size(map) when is_map(map), do: map_size(map)
+  defp values(list) when is_list(list), do: list
+
+  defp values(map) when is_map(map) do
+    Enum.sort_by(map, fn {n, _} -> namehash(n) end)
+    |> Enum.map(fn {_, v} -> v end)
   end
 end

@@ -3,7 +3,7 @@ defmodule CandidTest do
   doctest Candid
 
   test "greets the world" do
-    types = [{:vec, {:record, [{0, :blob}, {1, :blob}]}}]
+    types = [{:vec, {:record, [:blob, :blob]}}]
 
     values = [
       [
@@ -40,6 +40,35 @@ defmodule CandidTest do
 
     assert encode_parameters([{:record, %{id: :nat, name: :blob}}], [%{id: 1, name: "hello"}]) ==
              {[%{id: 1, name: "hello"}], ""}
+
+    type = {:record, %{zone_id: :text, rpc_host: :text, rpc_path: :text}}
+    values = %{zone_id: "zone_id", rpc_host: "rpc_host", rpc_path: "rpc_path"}
+    assert encode_parameters([type], [values]) == {[values], ""}
+  end
+
+  test "function parameter ordering" do
+    assert encode_parameters(%{a: :text, b: :text}, %{a: "hello", b: "world"}) ==
+             {%{a: "hello", b: "world"}, ""}
+
+    type = [:principal, :text, :text, :text]
+    values = {"br5f7-7uaaa-aaaaa-qaaca-cai", "rpc_host", "rpc_path", "zone_id"}
+
+    assert encode_parameters([{:record, type}], [values]) ==
+             {[values], ""}
+  end
+
+  test "complex record" do
+    type = %{zone_id: :text, rpc_host: :text, rpc_path: :text, cycles_requester_id: :principal}
+
+    values = %{
+      zone_id: "zone_id",
+      rpc_host: "rpc_host",
+      rpc_path: "rpc_path",
+      cycles_requester_id: "br5f7-7uaaa-aaaaa-qaaca-cai"
+    }
+
+    assert encode_parameters([{:record, type}], [values]) ==
+             {[values], ""}
   end
 
   defp encode_parameters(types, values) do
