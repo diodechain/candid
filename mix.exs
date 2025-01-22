@@ -5,7 +5,7 @@ defmodule Candid.MixProject do
   def project do
     [
       app: :candid,
-      version: "1.0.3",
+      version: "1.0.4",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
