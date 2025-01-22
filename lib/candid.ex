@@ -70,9 +70,8 @@ defmodule Candid do
     |> String.to_charlist()
     |> Enum.with_index()
     |> Enum.reduce(0, fn {char, i}, acc ->
-      (acc + char * :math.pow(223, byte_size(name) - i - 1))
-      |> trunc()
-      |> :erlang.band(2_147_483_647)
+      (acc + char * 223 ** (byte_size(name) - i - 1))
+      |> rem(4_294_967_296)
     end)
   end
 
