@@ -319,7 +319,7 @@ defmodule Candid do
     Enum.map_join(types, "", fn {tag, type} ->
       # Seems in the real world responses, the tag is not encoded
       # LEB128.encode_unsigned(tag) <> encode_type_value(type, value)
-      encode_type_value(type, values[tag])
+      encode_type_value(type, values[tag] || raise("Missing value for tag: #{inspect(tag)}"))
     end)
   end
 
