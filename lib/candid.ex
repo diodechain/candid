@@ -239,6 +239,15 @@ defmodule Candid do
     decode_list(rest, &decode_type_value(subtype, &1, definition_table))
   end
 
+  defp decode_type_value({:opt, _subtype}, <<0>> <> rest, _definition_table) do
+    {nil, rest}
+  end
+
+  defp decode_type_value({:opt, subtype}, <<1>> <> rest, definition_table) do
+    {value, rest} = decode_type_value(subtype, rest, definition_table)
+    {value, rest}
+  end
+
   defp decode_type_value({:comptype, type}, rest, definition_table) do
     type =
       Enum.at(definition_table, type) ||
@@ -314,7 +323,11 @@ defmodule Candid do
     |> Enum.map_join(fn {tag, type} ->
       # Seems in the real world responses, the tag is not encoded
       # LEB128.encode_unsigned(tag) <> encode_type_value(type, value)
-      encode_type_value(type, values[tag] || raise("Missing value for tag: #{inspect(tag)}"))
+      if not Map.has_key?(values, tag) do
+        raise("Missing value for tag: #{inspect(tag)}")
+      end
+
+      encode_type_value(type, values[tag])
     end)
   end
 
@@ -440,6 +453,11 @@ defmodule Candid do
   defp decode_type({-15, rest}, _definition_table), do: {:text, rest}
   defp decode_type({-16, rest}, _definition_table), do: {:reserved, rest}
   defp decode_type({-17, rest}, _definition_table), do: {:empty, rest}
+
+  defp decode_type({-18, rest}, definition_table) do
+    {subtype, rest} = decode_type(rest, definition_table)
+    {{:opt, subtype}, rest}
+  end
 
   defp decode_type({-19, rest}, definition_table) do
     {subtype, rest} = decode_type(rest, definition_table)

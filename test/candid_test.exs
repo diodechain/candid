@@ -30,6 +30,9 @@ defmodule CandidTest do
   end
 
   test "encode_parameters" do
+    assert encode_parameters([{:opt, :text}], ["hello"]) == {["hello"], ""}
+    assert encode_parameters([{:opt, :text}], [nil]) == {[nil], ""}
+
     assert encode_parameters([:text, :text], ["hello", "world"]) == {["hello", "world"], ""}
 
     assert encode_parameters([:principal, :text], ["br5f7-7uaaa-aaaaa-qaaca-cai", "hello"]) ==
