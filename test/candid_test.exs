@@ -71,6 +71,14 @@ defmodule CandidTest do
              {[values], ""}
   end
 
+  test "variant" do
+    type = {:variant, %{number: :int, paragraph: :text, nothing: :null}}
+
+    assert encode_parameters([type], [{:number, 7}]) == {[{:number, 7}], ""}
+    assert encode_parameters([type], [{:paragraph, "abc"}]) == {[{:paragraph, "abc"}], ""}
+    assert encode_parameters([type], [{:nothing, nil}]) == {[{:nothing, nil}], ""}
+  end
+
   defp encode_parameters(types, values) do
     Candid.encode_parameters(types, values)
     |> Candid.decode_parameters(types)

@@ -254,7 +254,7 @@ defmodule Candid do
 
   defp encode_list(list, fun \\ fn x -> x end) when is_list(list) do
     len = length(list)
-    LEB128.encode_unsigned(len) <> Enum.map_join(list, "", fun)
+    LEB128.encode_unsigned(len) <> Enum.map_join(list, fun)
   end
 
   defp encode_type_list(types, definition_table, fun) when is_list(types) do
@@ -311,11 +311,22 @@ defmodule Candid do
     values = make_tagged_map(values)
 
     Enum.sort_by(types, fn {tag, _} -> namehash(tag) end)
-    |> Enum.map_join("", fn {tag, type} ->
+    |> Enum.map_join(fn {tag, type} ->
       # Seems in the real world responses, the tag is not encoded
       # LEB128.encode_unsigned(tag) <> encode_type_value(type, value)
       encode_type_value(type, values[tag] || raise("Missing value for tag: #{inspect(tag)}"))
     end)
+  end
+
+  defp encode_type_value({:variant, types}, {tag, value}) do
+    types = make_tagged_list(types)
+
+    idx =
+      Enum.find_index(types, fn {tag1, _type} -> tag == tag1 end) ||
+        raise("Missing value for variant: #{inspect(types)}")
+
+    {_tag, type} = Enum.at(types, idx)
+    LEB128.encode_unsigned(idx) <> encode_type_value(type, value)
   end
 
   defp make_tagged_list(tuple) when is_tuple(tuple) do
@@ -383,6 +394,16 @@ defmodule Candid do
       |> encode_type_list(definition_table, &encode_fieldtype/2)
 
     encoding = LEB128.encode_signed(-20) <> encoding
+    maybe_add_complex_type(encoding, definition_table)
+  end
+
+  defp encode_type({:variant, subtypes}, definition_table) do
+    {encoding, definition_table} =
+      make_tagged_list(subtypes)
+      |> Enum.sort_by(fn {tag, _} -> namehash(tag) end)
+      |> encode_type_list(definition_table, &encode_fieldtype/2)
+
+    encoding = LEB128.encode_signed(-21) <> encoding
     maybe_add_complex_type(encoding, definition_table)
   end
 
