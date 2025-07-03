@@ -82,6 +82,11 @@ defmodule CandidTest do
     assert encode_parameters([type], [{:nothing, nil}]) == {[{:nothing, nil}], ""}
   end
 
+  test "bool" do
+    assert encode_parameters([:bool], [true]) == {[true], ""}
+    assert encode_parameters([:bool], [false]) == {[false], ""}
+  end
+
   defp encode_parameters(types, values) do
     Candid.encode_parameters(types, values)
     |> Candid.decode_parameters(types)

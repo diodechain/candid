@@ -179,6 +179,8 @@ defmodule Candid do
   defp decode_type_value(:nat, rest, _definition_table), do: LEB128.decode_unsigned!(rest)
   defp decode_type_value(:int, rest, _definition_table), do: LEB128.decode_unsigned!(rest)
   defp decode_type_value(:null, rest, _definition_table), do: {nil, rest}
+  defp decode_type_value(:bool, <<0>> <> rest, _definition_table), do: {false, rest}
+  defp decode_type_value(:bool, <<1>> <> rest, _definition_table), do: {true, rest}
 
   defp decode_type_value({:variant, types}, rest, definition_table) do
     {idx, rest} = LEB128.decode_unsigned!(rest)
