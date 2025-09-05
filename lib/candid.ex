@@ -192,6 +192,10 @@ defmodule Candid do
     {{name, value}, rest}
   end
 
+  defp decode_type_value(record, rest, definition_table) when is_map(record) do
+    decode_type_value({:record, Map.to_list(record)}, rest, definition_table)
+  end
+
   defp decode_type_value({:record, types}, rest, definition_table) do
     {result, rest} =
       make_tagged_list(types)
