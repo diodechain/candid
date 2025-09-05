@@ -56,7 +56,13 @@ defmodule Candid do
   def decode_parameters("DIDL" <> term, passed_argument_types \\ nil) do
     {definition_table, rest} = decode_definition_list(term)
     {parsed_argument_types, rest} = decode_list(rest, &decode_type(&1, definition_table))
-    record_type = normalize_type({:record, passed_argument_types || parsed_argument_types})
+
+    record_type =
+      if passed_argument_types do
+        normalize_type({:record, passed_argument_types})
+      else
+        {:record, make_tagged_list(parsed_argument_types)}
+      end
 
     case decode_type_value(record_type, rest, definition_table) do
       {result, rest} when is_tuple(result) ->
