@@ -255,6 +255,10 @@ defmodule Candid do
     {value, rest}
   end
 
+  defp decode_type_value({:opt, subtype}, <<b>> <> _other, _definition_table) do
+    raise "wrong opt type: #{inspect(subtype)}, expected <<1>> or <<0>>, got #{inspect(b)}"
+  end
+
   defp decode_type_value({:comptype, type}, rest, definition_table) do
     type =
       Enum.at(definition_table, type) ||
