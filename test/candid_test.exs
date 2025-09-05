@@ -87,6 +87,23 @@ defmodule CandidTest do
     assert encode_parameters([:bool], [false]) == {[false], ""}
   end
 
+  test "record decode" do
+    begin =
+      Candid.encode_parameters(
+        [
+          {:record, %{a: :text, b: :text, c: {:variant, %{one: :null, two: :null, three: :null}}}}
+        ],
+        [%{a: "hello", b: "world", c: {:one, nil}}]
+      )
+
+    Candid.decode_parameters(begin, %{a: :text, b: :text, c: [:one, :two, :three]})
+  end
+
+  test "blob" do
+    assert encode_parameters([:blob], ["hello"]) == {[<<"hello">>], ""}
+    assert encode_parameters([{:vec, :nat8}], ["hello"]) == {[<<"hello">>], ""}
+  end
+
   defp encode_parameters(types, values) do
     Candid.encode_parameters(types, values)
     |> Candid.decode_parameters(types)

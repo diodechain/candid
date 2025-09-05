@@ -28,10 +28,12 @@ defmodule Candid do
   Candid.encode_parameters([:int, :blob], [15, "hello world"])
   ```
   """
-  def encode_parameters(types, values) do
-    if size(types) != size(values) do
+  def encode_parameters(input_types, values) do
+    if size(input_types) != size(values) do
       raise "types and values must have the same length"
     end
+
+    record_type = {:record, types} = normalize_type({:record, input_types})
 
     {typemap, definitions} =
       Enum.reduce(values(types), {%{}, []}, fn type, {typemap, definition_table} ->
@@ -45,18 +47,18 @@ defmodule Candid do
 
     definition_table = encode_list(definitions)
     argument_types = encode_list(values(types), fn type -> typemap[type] end)
-    binvalues = encode_type_value({:record, types}, values)
+    binvalues = encode_type_value(record_type, values)
     result = "DIDL" <> definition_table <> argument_types <> binvalues
-    {^values, ""} = decode_parameters(result, types)
+    {^values, ""} = decode_parameters(result, input_types)
     result
   end
 
   def decode_parameters("DIDL" <> term, passed_argument_types \\ nil) do
     {definition_table, rest} = decode_definition_list(term)
     {parsed_argument_types, rest} = decode_list(rest, &decode_type(&1, definition_table))
-    argument_types = passed_argument_types || parsed_argument_types
+    record_type = normalize_type({:record, passed_argument_types || parsed_argument_types})
 
-    case decode_type_value({:record, argument_types}, rest, definition_table) do
+    case decode_type_value(record_type, rest, definition_table) do
       {result, rest} when is_tuple(result) ->
         {Tuple.to_list(result), rest}
 
@@ -182,6 +184,10 @@ defmodule Candid do
   defp decode_type_value(:bool, <<0>> <> rest, _definition_table), do: {false, rest}
   defp decode_type_value(:bool, <<1>> <> rest, _definition_table), do: {true, rest}
 
+  defp decode_type_value(variant, rest, definition_table) when is_list(variant) do
+    decode_type_value({:variant, variant}, rest, definition_table)
+  end
+
   defp decode_type_value({:variant, types}, rest, definition_table) do
     {idx, rest} = LEB128.decode_unsigned!(rest)
 
@@ -192,14 +198,9 @@ defmodule Candid do
     {{name, value}, rest}
   end
 
-  defp decode_type_value(record, rest, definition_table) when is_map(record) do
-    decode_type_value({:record, Map.to_list(record)}, rest, definition_table)
-  end
-
   defp decode_type_value({:record, types}, rest, definition_table) do
     {result, rest} =
-      make_tagged_list(types)
-      |> Enum.sort_by(fn {name, _} -> namehash(name) end)
+      types
       |> Enum.reduce({[], rest}, fn {name, type}, {acc, rest} ->
         # According to spec: https://github.com/dfinity/candid/blob/master/spec/Candid.md#core-grammar
         # M(kv*  : record {<fieldtype>*}) = M(kv : <fieldtype>)*
@@ -322,11 +323,9 @@ defmodule Candid do
   defp encode_type_value({:opt, type}, value), do: <<1>> <> encode_type_value(type, value)
 
   defp encode_type_value({:record, types}, values) do
-    types = make_tagged_list(types)
     values = make_tagged_map(values)
 
-    Enum.sort_by(types, fn {tag, _} -> namehash(tag) end)
-    |> Enum.map_join(fn {tag, type} ->
+    Enum.map_join(types, fn {tag, type} ->
       # Seems in the real world responses, the tag is not encoded
       # LEB128.encode_unsigned(tag) <> encode_type_value(type, value)
       if not Map.has_key?(values, tag) do
@@ -337,9 +336,15 @@ defmodule Candid do
     end)
   end
 
-  defp encode_type_value({:variant, types}, {tag, value}) do
-    types = make_tagged_list(types)
+  defp encode_type_value(variant, value) when is_list(variant) do
+    encode_type_value({:variant, variant}, value)
+  end
 
+  defp encode_type_value({:variant, types}, tag) when is_atom(tag) do
+    encode_type_value({:variant, types}, {tag, nil})
+  end
+
+  defp encode_type_value({:variant, types}, {tag, value}) do
     idx =
       Enum.find_index(types, fn {tag1, _type} -> tag == tag1 end) ||
         raise("Missing value for variant: #{inspect(types)}")
@@ -355,13 +360,13 @@ defmodule Candid do
 
   defp make_tagged_list(list) when is_list(list) do
     Enum.with_index(list)
-    |> Enum.map(fn
-      {value, index} -> {index, value}
-    end)
+    |> Enum.map(fn {value, index} -> {index, value} end)
+    |> Enum.sort_by(fn {tag, _} -> namehash(tag) end)
   end
 
   defp make_tagged_list(map) when is_map(map) do
     Map.to_list(map)
+    |> Enum.sort_by(fn {tag, _} -> namehash(tag) end)
   end
 
   defp make_tagged_map(enum) do
@@ -408,8 +413,7 @@ defmodule Candid do
 
   defp encode_type({:record, subtypes}, definition_table) do
     {encoding, definition_table} =
-      make_tagged_list(subtypes)
-      |> Enum.sort_by(fn {tag, _} -> namehash(tag) end)
+      subtypes
       |> encode_type_list(definition_table, &encode_fieldtype/2)
 
     encoding = LEB128.encode_signed(-20) <> encoding
@@ -418,8 +422,7 @@ defmodule Candid do
 
   defp encode_type({:variant, subtypes}, definition_table) do
     {encoding, definition_table} =
-      make_tagged_list(subtypes)
-      |> Enum.sort_by(fn {tag, _} -> namehash(tag) end)
+      subtypes
       |> encode_type_list(definition_table, &encode_fieldtype/2)
 
     encoding = LEB128.encode_signed(-21) <> encoding
@@ -495,10 +498,37 @@ defmodule Candid do
 
   defp size(list) when is_list(list), do: length(list)
   defp size(map) when is_map(map), do: map_size(map)
-  defp values(list) when is_list(list), do: list
+  defp values(tagged_list) when is_list(tagged_list), do: Enum.map(tagged_list, &elem(&1, 1))
 
-  defp values(map) when is_map(map) do
-    Enum.sort_by(map, fn {n, _} -> namehash(n) end)
-    |> Enum.map(fn {_, v} -> v end)
+  def normalize_type(record) when is_map(record) do
+    normalize_type({:record, Map.to_list(record)})
+  end
+
+  def normalize_type({:record, subtypes}) do
+    {:record,
+     make_tagged_list(subtypes) |> Enum.map(fn {tag, type} -> {tag, normalize_type(type)} end)}
+  end
+
+  def normalize_type(variant) when is_list(variant) do
+    normalize_type({:variant, variant})
+  end
+
+  def normalize_type({:variant, variant}) do
+    list =
+      Enum.map(variant, fn
+        {tag, type} -> {tag, normalize_type(type)}
+        tag when is_atom(tag) -> {tag, :null}
+      end)
+      |> Enum.sort_by(fn {tag, _} -> namehash(tag) end)
+
+    {:variant, list}
+  end
+
+  def normalize_type(atom) when is_atom(atom) do
+    atom
+  end
+
+  def normalize_type({atom, subtype}) when atom in [:opt, :vec] do
+    {atom, normalize_type(subtype)}
   end
 end

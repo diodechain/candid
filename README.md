@@ -31,6 +31,28 @@ messages = [
 |> Candid.decode_parameters()
 ```
 
+## Support types and shorthands:
+
+For convenience there are type shorthands for :variant, and :record
+- Record: `%{name => type_value}` e.g. %{a: :text}
+- Variant: `[type]` e.g. `[{:ok, :text}, :error]`
+
+Other complex types have to be defined as tuples:
+- Opt: `{:opt, type}` e.g. `{:opt, :nat}`
+- Vec: `{:vec, type}` e.g. `{:vec, :nat}`
+
+And simple types are just atoms:
+- `:null`
+- `:bool`
+- `:nat` (`:nat8`, `:nat16`, `:nat32`, `:nat64`)
+- `:int` (`:int8`, `:int16`, `:int32`, `:int64`)
+- `:float32`, `:float64`
+- `:text`
+- `:principal`
+- `:blob`
+- `:empty`
+
+
 ## Completion
 
 This library is currently in the early stages of development and does not yet support all Candid formats (only those we need for our use cases at the moment). PRs and contributions to extend this library are welcome though!
