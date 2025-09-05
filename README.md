@@ -55,7 +55,7 @@ And simple types are just atoms:
 
 ## Completion
 
-This library is currently in the early stages of development and does not yet support all Candid formats (only those we need for our use cases at the moment). PRs and contributions to extend this library are welcome though!
+This library does not yet support loading of .did file specifications. PRs and contributions to extend this library are welcome though!
 
 ## Documentation
 
