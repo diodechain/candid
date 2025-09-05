@@ -501,7 +501,7 @@ defmodule Candid do
   defp values(tagged_list) when is_list(tagged_list), do: Enum.map(tagged_list, &elem(&1, 1))
 
   def normalize_type(record) when is_map(record) do
-    normalize_type({:record, Map.to_list(record)})
+    normalize_type({:record, record})
   end
 
   def normalize_type({:record, subtypes}) do

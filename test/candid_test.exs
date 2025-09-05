@@ -88,7 +88,7 @@ defmodule CandidTest do
   end
 
   test "record decode" do
-    begin =
+    a =
       Candid.encode_parameters(
         [
           {:record, %{a: :text, b: :text, c: {:variant, %{one: :null, two: :null, three: :null}}}}
@@ -96,7 +96,16 @@ defmodule CandidTest do
         [%{a: "hello", b: "world", c: {:one, nil}}]
       )
 
-    Candid.decode_parameters(begin, %{a: :text, b: :text, c: [:one, :two, :three]})
+    b =
+      Candid.encode_parameters(
+        [
+          %{a: :text, b: :text, c: [:one, :two, :three]}
+        ],
+        [%{a: "hello", b: "world", c: {:one, nil}}]
+      )
+
+    Candid.decode_parameters(a, %{a: :text, b: :text, c: [:one, :two, :three]})
+    Candid.decode_parameters(b, %{a: :text, b: :text, c: [:one, :two, :three]})
   end
 
   test "blob" do
